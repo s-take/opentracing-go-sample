@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+
 	// "github.com/uber/jaeger-lib/metrics"
 
 	"github.com/uber/jaeger-client-go"
@@ -16,22 +18,28 @@ import (
 	// jaegerlog "github.com/uber/jaeger-client-go/log"
 )
 
-func main() {
-
+// initJaeger returns an instance of Jaeger Tracer that samples 100% of traces and logs all spans to stdout.
+func initJaeger(service string) (opentracing.Tracer, io.Closer) {
 	cfg := jaegercfg.Configuration{
-		ServiceName: "echo service",
 		Sampler: &jaegercfg.SamplerConfig{
-			Type:  jaeger.SamplerTypeConst,
+			Type:  "const",
 			Param: 1,
 		},
+		Reporter: &jaegercfg.ReporterConfig{
+			LogSpans: true,
+		},
 	}
+	tracer, closer, err := cfg.New(service, jaegercfg.Logger(jaeger.StdLogger))
+	if err != nil {
+		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
+	}
+	return tracer, closer
+}
+
+func main() {
 
 	// Initialize tracer with a logger and a metrics factory
-	tracer, closer, err := cfg.NewTracer()
-	if err != nil {
-		log.Printf("Could not initialize jaeger tracer: %s", err.Error())
-		return
-	}
+	tracer, closer := initJaeger("echo service")
 	// Set the singleton opentracing.Tracer with the Jaeger tracer.
 	opentracing.SetGlobalTracer(tracer)
 	defer closer.Close()
@@ -64,7 +72,7 @@ func dump(w http.ResponseWriter, r *http.Request) {
 		appSpecificOperationName,
 		ext.RPCServerOption(wireContext))
 	serverSpan.SetTag("role", "childspan")
-	serverSpan.SetBaggageItem("dump", string(dump)) 
+	serverSpan.SetBaggageItem("dump", string(dump))
 
 	defer serverSpan.Finish()
 

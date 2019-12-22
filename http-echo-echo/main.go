@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -23,24 +24,30 @@ var client = http.Client{
 	Timeout: time.Millisecond * 30000,
 }
 
+// initJaeger returns an instance of Jaeger Tracer that samples 100% of traces and logs all spans to stdout.
+func initJaeger(service string) (opentracing.Tracer, io.Closer) {
+	cfg := jaegercfg.Configuration{
+		Sampler: &jaegercfg.SamplerConfig{
+			Type:  "const",
+			Param: 1,
+		},
+		Reporter: &jaegercfg.ReporterConfig{
+			LogSpans: true,
+		},
+	}
+	tracer, closer, err := cfg.New(service, jaegercfg.Logger(jaeger.StdLogger))
+	if err != nil {
+		panic(fmt.Sprintf("ERROR: cannot init Jaeger: %v\n", err))
+	}
+	return tracer, closer
+}
+
 func main() {
 	flag.StringVar(&url, "url", "http://localhost:8080", "setting get url")
 	flag.Parse()
 
-	cfg := jaegercfg.Configuration{
-		ServiceName: "echo echo service",
-		Sampler: &jaegercfg.SamplerConfig{
-			Type:  jaeger.SamplerTypeConst,
-			Param: 1,
-		},
-	}
-
 	// Initialize tracer with a logger and a metrics factory
-	tracer, closer, err := cfg.NewTracer()
-	if err != nil {
-		log.Printf("Could not initialize jaeger tracer: %s", err.Error())
-		return
-	}
+	tracer, closer := initJaeger("echo echo service")
 	// Set the singleton opentracing.Tracer with the Jaeger tracer.
 	opentracing.SetGlobalTracer(tracer)
 	defer closer.Close()
