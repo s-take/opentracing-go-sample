@@ -1,0 +1,132 @@
+# ref: https://github.com/jaegertracing/jaeger-kubernetes
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parent
+  namespace: test
+  labels:
+    app: parent
+spec:
+  selector:
+    matchLabels:
+      app: parent
+  template:
+    metadata:
+      labels:
+        app: parent
+    spec:
+      containers:
+        - image: stake/opentracing-go-parent
+          name: echoecho
+          ports:
+            - containerPort: 8081
+        - image: jaegertracing/jaeger-agent
+          name: jaeger-agent
+          ports:
+            - containerPort: 5775
+              protocol: UDP
+            - containerPort: 6831
+              protocol: UDP
+            - containerPort: 6832
+              protocol: UDP
+            - containerPort: 5778
+              protocol: TCP
+          args:
+            ["--collector.host-port=jaeger-collector.test-pf-infra.svc:14250"]
+          # args: ["--collector.host-port=jaeger-collector.jaeger-infra.svc:14250"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: parent
+  namespace: test
+  labels:
+    app: parent
+spec:
+  ports:
+    - name: parent
+      port: 80
+      protocol: TCP
+      targetPort: 8081
+  selector:
+    app: parent
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: child
+  namespace: test
+  labels:
+    app: child
+spec:
+  selector:
+    matchLabels:
+      app: child
+  template:
+    metadata:
+      labels:
+        app: child
+    spec:
+      containers:
+        - image: stake/opentracing-go-child
+          name: echoecho
+          ports:
+            - containerPort: 8080
+        - image: jaegertracing/jaeger-agent
+          name: jaeger-agent
+          ports:
+            - containerPort: 5775
+              protocol: UDP
+            - containerPort: 6831
+              protocol: UDP
+            - containerPort: 6832
+              protocol: UDP
+            - containerPort: 5778
+              protocol: TCP
+          args:
+            ["--collector.host-port=jaeger-collector.test-pf-infra.svc:14250"]
+          # args: ["--collector.host-port=jaeger-collector.jaeger-infra.svc:14250"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: child
+  namespace: test
+  labels:
+    app: child
+spec:
+  ports:
+    - name: child
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: child
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fortio
+  namespace: test
+spec:
+  selector:
+    matchLabels:
+      app: fortio
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: fortio
+    spec:
+      containers:
+        - name: fortio
+          image: fortio/fortio:latest_release
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http-fortio
+            - containerPort: 8079
+              name: grpc-ping
